@@ -18,13 +18,15 @@ print(f"使用设备: {device}")
 
 # 数据预处理
 transform_train = transforms.Compose([
-    transforms.RandomCrop(32, padding=4),  # 随机裁剪
-    transforms.RandomHorizontalFlip(),  # 随机水平翻转
+    transforms.RandomCrop(32, padding=4),  # 先在原始32×32上裁剪增强
+    transforms.RandomHorizontalFlip(),     # 随机水平翻转
+    transforms.Resize((224, 224)),        # 插值到224×224
     transforms.ToTensor(),
     transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),  # CIFAR-10的均值和标准差
 ])
 
 transform_test = transforms.Compose([
+    transforms.Resize((224, 224)),        # 测试集也插值到224×224
     transforms.ToTensor(),
     transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
@@ -38,7 +40,7 @@ test_dataset = datasets.CIFAR10(
 )
 
 # 数据加载器（Windows系统设置num_workers=0）
-batch_size = 128  # 若GPU内存不足可减小，如64
+batch_size = 32  # 若GPU内存不足可减小，如64
 train_loader = DataLoader(
     train_dataset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=False
 )
@@ -51,15 +53,15 @@ classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship'
 
 # 初始化模型
 model = swin_t(
-    patch_size=2,
+    patch_size=4,
     hidden_dim=96,
     layers=(2, 2, 6, 2),
     heads=(3, 6, 12, 24),
     channels=3,
     num_classes=10,  # CIFAR-10有10个类别
     head_dim=32,
-    window_size=4,
-    downscaling_factors=(2, 2, 1, 1),
+    window_size=7,
+    downscaling_factors=(1, 2, 2, 2),#注意下采样的因子，否则可能出现维度无法整除的问题
     relative_pos_embedding=True
 ).to(device)
 
@@ -137,7 +139,7 @@ def test(epoch):
 
 # 训练主循环
 best_acc = 0
-num_epochs = 200  # 可根据需要调整
+num_epochs = 100  # 可根据需要调整
 
 for epoch in range(1, num_epochs + 1):
     train_loss, train_acc = train(epoch)
