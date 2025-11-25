@@ -1,4 +1,5 @@
 version 1：在cifar10上用swin transformer进行分类，acc 0.83
+
 version 2: 对cifar10数据集插值到224*224，模型配置
 ```
 model = swin_t(
