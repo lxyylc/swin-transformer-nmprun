@@ -15,4 +15,4 @@ model = swin_t(
     relative_pos_embedding=True
 ).to(device)
 ```
-训练集acc 0.96，测试集acc 0.885
+训练集acc 0.96，测试集acc 0.889
