@@ -16,3 +16,5 @@ model = swin_t(
 ).to(device)
 ```
 训练集acc 0.96，测试集acc 0.889
+
+剪枝后微调acc0.885
