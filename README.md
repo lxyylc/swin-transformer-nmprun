@@ -1,3 +1,5 @@
+对swin transoformer进行N:M半结构化剪枝，这是一种介于结构化剪枝和非结构化剪枝之间的方法，核心是在模型权重中按 “每 M 个连续参数保留 N 个非零值” 的规则进行剪枝，数据集cifar10
+
 version 1：在cifar10（图片大小32*32）上用swin transformer进行分类，acc 0.83，模型配置
 ```
 model = swin_t(
