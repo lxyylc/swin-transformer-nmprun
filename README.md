@@ -33,15 +33,21 @@ model = swin_t(
 ```
 训练swin transformer：
 
-```python train.py```
+```
+python train.py
+```
 
 剪枝：
 
-```python nmprun.py```
+```
+python nmprun.py
+```
 
 微调：
 
-```python retrain.py```
+```
+python retrain.py
+```
 
 训练集acc 0.96，测试集acc 0.889，剪枝后微调acc 0.885
 
