@@ -2,52 +2,46 @@ import torch
 import torch.nn as nn
 from collections import defaultdict
 import os
-import time  # 增加时间模块用于计时
+import time
+from swin import swin_t
 
 
-def n_m_prune_linear_layer(layer, n, m, mask=None):
-    """对nn.Linear层进行N:M半结构化剪枝"""
+def n_m_prune_linear_layer(layer, n, m):
+    #传进来的layer参数一定是nn.Linear
     weight = layer.weight.data
+    #因为是线性层，所以只需要考虑输入维度和输出维度
     out_features, in_features = weight.shape
 
-    if mask is None:
-        mask = torch.ones_like(weight)
+    mask = torch.ones_like(weight)
 
-        # 优化：使用向量化操作减少循环次数（原代码逐输出通道+逐分组循环效率低）
-        # 重塑为 (out_features, -1, m) 便于批量处理分组
-        group_size = m
-        num_groups = in_features // group_size
-        remaining = in_features % group_size
+    group_size = m
+    num_groups = in_features // group_size
+    remaining = in_features % group_size
 
-        # 处理完整分组
-        if num_groups > 0:
-            weight_groups = weight[:, :num_groups * group_size].view(out_features, num_groups, group_size)
-            # 计算每个分组内的绝对值排序索引
-            sorted_indices = torch.argsort(torch.abs(weight_groups), dim=2)
-            # 保留每个分组中绝对值最大的n个元素，其余位置掩码置0
-            prune_idx = sorted_indices[:, :, :-n] if n > 0 else sorted_indices
-            # 构造掩码的分组部分
-            mask_groups = torch.ones_like(weight_groups)
-            mask_groups = mask_groups.scatter_(2, prune_idx, 0)
-            mask[:, :num_groups * group_size] = mask_groups.view(out_features, -1)
+    if num_groups > 0:
+        # 将权重的前 num_groups*group_size 列重塑为 (out_features, 分组数, 每组大小),原来的形状为（out_features,in_features)
+        weight_groups = weight[:, :num_groups * group_size].view(out_features, num_groups, group_size)
+        # 计算每个分组内的绝对值排序索引
+        sorted_indices = torch.argsort(torch.abs(weight_groups), dim=2)
+        # 保留每个分组中绝对值最大的n个元素，其余位置掩码置0
+        prune_idx = sorted_indices[:, :, :-n] if n > 0 else sorted_indices
+        # 构造掩码的分组部分
+        mask_groups = torch.ones_like(weight_groups)
+        mask_groups = mask_groups.scatter_(2, prune_idx, 0)
+        mask[:, :num_groups * group_size] = mask_groups.view(out_features, -1)
 
-        # 处理剩余不足m的部分（不剪枝）
-        if remaining > 0 and remaining <= n:
-            mask[:, num_groups * group_size:] = 1.0
+    if remaining > 0 and remaining <= n:
+        mask[:, num_groups * group_size:] = 1.0
 
-    # 应用掩码
     with torch.no_grad():
         layer.weight.data *= mask
 
     return mask
 
 
-def apply_n_m_pruning(model, n, m, masks=None):
-    """对模型中所有nn.Linear层应用N:M半结构化剪枝，增加进度打印"""
-    if masks is None:
-        masks = defaultdict(torch.Tensor)
+def apply_n_m_pruning(model, n, m):
+    masks = defaultdict(torch.Tensor)
 
-    # 先收集所有Linear层信息，方便统计进度
     linear_layers = [(name, module) for name, module in model.named_modules()
                      if isinstance(module, nn.Linear)]
     total_layers = len(linear_layers)
@@ -55,31 +49,23 @@ def apply_n_m_pruning(model, n, m, masks=None):
 
     for i, (name, module) in enumerate(linear_layers, 1):
         start_time = time.time()
-        layer_mask = masks.get(name, None)
         new_mask = n_m_prune_linear_layer(
             layer=module,
             n=n,
-            m=m,
-            mask=layer_mask
+            m=m
         )
         masks[name] = new_mask
-        # 打印当前剪枝进度
+        # 打印剪枝进度
         layer_type = f"{module.in_features}→{module.out_features}"
         elapsed = time.time() - start_time
         print(f"[{i}/{total_layers}] 剪枝完成: {name} ({layer_type}) | 耗时: {elapsed:.2f}s")
 
     return masks
 
-
-# 使用示例
 if __name__ == '__main__':
-    # 新增：解决swin_t未导入的问题
-    from swin import swin_t  # 从train.py中可知模型定义在swin.py
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"使用设备: {device}")
 
-    # 初始化模型
     model = swin_t(
         patch_size=4,
         hidden_dim=96,
@@ -93,7 +79,6 @@ if __name__ == '__main__':
         relative_pos_embedding=True
     ).to(device)
 
-    # 定义剪枝参数
     N = 2
     M = 4
     print(f"开始N:M剪枝 (N={N}, M={M})...")
@@ -105,7 +90,7 @@ if __name__ == '__main__':
     print(f"所有层剪枝完成 | 总耗时: {total_time:.2f}s")
 
     # 保存掩码
-    os.makedirs('models', exist_ok=True)  # 确保目录存在
+    os.makedirs('models', exist_ok=True)
     torch.save(pruning_masks, 'models/swin_pruning_masks.pt')
     print(f"掩码已保存至 models/swin_pruning_masks.pt")
 
@@ -121,7 +106,6 @@ if __name__ == '__main__':
 
 
 def load_pruning_masks(model, mask_path):
-    """加载掩码并应用到模型，确保剪枝后的参数不被更新"""
     masks = torch.load(mask_path,weights_only=False)
 
     for name, module in model.named_modules():
@@ -131,8 +115,8 @@ def load_pruning_masks(model, mask_path):
             with torch.no_grad():
                 module.weight.data *= mask
 
-            # 注册梯度钩子
             def make_hook(mask):
+                #grad参数是PyTorch自动传入的
                 def hook(grad):
                     return grad * mask
 
