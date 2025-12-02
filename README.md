@@ -51,7 +51,10 @@ python nmprun.py
 ```
 python retrain.py
 ```
+|模型|剪枝方法|剪枝前acc|剪枝后acc|
+|-|-|-|-|
+|swin transformer|2:4剪枝|0.889|0.885|
 
-训练集acc 0.96，测试集acc 0.889，剪枝后微调acc 0.885
+训练epochs=200，微调epochs=20
 
 参考https://github.com/Cydia2018/Vision-Transformer-CIFAR10
